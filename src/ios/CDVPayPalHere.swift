@@ -6,12 +6,13 @@ import PayPalRetailSDK
   
   // MARK: - Cordova Interface
   
-    @objc(initializeMerchantCDV:) func initializeMerchantCDV(_ command: CDVInvokedUrlCommand) {
+  @objc(initializeMerchantCDV:) func initializeMerchantCDV(_ command: CDVInvokedUrlCommand) {
+    commandDelegate.run {
       let accessToken = command.arguments[0] as? String ?? ""
       let refreshUrl = command.arguments[1] as? String ?? ""
       let environment = command.arguments[2] as? String ?? ""
       let referrerCode = command.arguments[3] as? String ?? ""
-  
+      
       self.initializeMerchant(
         accessToken: accessToken,
         refreshUrl: refreshUrl,
@@ -21,25 +22,31 @@ import PayPalRetailSDK
         onError: self.getCordovaErrorCallback(command)
       )
     }
+  }
   
-    @objc(connectToReaderCDV:) func connectToReaderCDV(_ command: CDVInvokedUrlCommand) {
+  @objc(connectToReaderCDV:) func connectToReaderCDV(_ command: CDVInvokedUrlCommand) {
+    commandDelegate.run {
       self.connectToReader(
         onSuccess: self.getCordovaSuccessCallback(command),
         onError: self.getCordovaErrorCallback(command)
       )
     }
+  }
   
-    @objc(searchAndConnectToReaderCDV:) func searchAndConnectToReaderCDV(_ command: CDVInvokedUrlCommand) {
+  @objc(searchAndConnectToReaderCDV:) func searchAndConnectToReaderCDV(_ command: CDVInvokedUrlCommand) {
+    commandDelegate.run {
       self.searchAndConnectToReader(
         onSuccess: self.getCordovaSuccessCallback(command),
         onError: self.getCordovaErrorCallback(command)
       )
     }
+  }
   
-    @objc(takePaymentCDV:) func takePaymentCDV(_ command: CDVInvokedUrlCommand) {
+  @objc(takePaymentCDV:) func takePaymentCDV(_ command: CDVInvokedUrlCommand) {
+    commandDelegate.run {
       let currencyCode = command.arguments[0] as? String ?? "USD"
       let total = NSDecimalNumber(decimal: ((command.arguments[1] as? NSNumber ?? 0)?.decimalValue)!)
-  
+      
       self.takePayment(
         currencyCode: currencyCode,
         total: total,
@@ -47,6 +54,7 @@ import PayPalRetailSDK
         onError: self.getCordovaErrorCallback(command)
       )
     }
+  }
   
   // MARK: - Swift Implementation
   
@@ -194,23 +202,23 @@ import PayPalRetailSDK
   
   // MARK: - Cordova Callbacks
   
-    private func getCordovaSuccessCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
-      return { (msg: String) in
-        self.commandDelegate!.send(
-          CDVPluginResult(status: CDVCommandStatus_OK, messageAs: msg),
-          callbackId: command.callbackId
-        )
-      }
+  private func getCordovaSuccessCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
+    return { (msg: String) in
+      self.commandDelegate!.send(
+        CDVPluginResult(status: CDVCommandStatus_OK, messageAs: msg),
+        callbackId: command.callbackId
+      )
     }
+  }
   
-    private func getCordovaErrorCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
-      return { (msg: String) in
-        self.commandDelegate!.send(
-          CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: msg),
-          callbackId: command.callbackId
-        )
-      }
+  private func getCordovaErrorCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
+    return { (msg: String) in
+      self.commandDelegate!.send(
+        CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: msg),
+        callbackId: command.callbackId
+      )
     }
+  }
   
   // MARK: - Handlers
   
