@@ -1,67 +1,55 @@
 import PayPalRetailSDK
 
 @objc(CDVPayPalHere) class CDVPayPalHere : CDVPlugin {
-	func log(_ msg: String) {
-		print("[CDVPayPalHere] " + msg)
-	}
-
-	func getJSON (_ d: Dictionary<String, String>) -> String {
-		var str = "{"
-		for (k, v) in d {
-            if (v.hasPrefix("{") || v.hasPrefix("[")) {
-                str += "\"\(k)\":\(v),"
-            } else {
-                str += "\"\(k)\":\"\(v)\","
-            }
-		}
-
-    str = String(str[..<str.index(before: str.endIndex)])
-    
-		str += "}"
-		return str
-	}
-
-  func getJSONForError (_ error: PPRetailError?) -> String {
-    guard let error = error else {
-      return self.getJSON([:])
+  var merchantInitialized : Bool = false
+  var readerConnected: Bool = false
+  
+  // MARK: - Cordova Interface
+  
+    @objc(initializeMerchantCDV:) func initializeMerchantCDV(_ command: CDVInvokedUrlCommand) {
+      let accessToken = command.arguments[0] as? String ?? ""
+      let refreshUrl = command.arguments[1] as? String ?? ""
+      let environment = command.arguments[2] as? String ?? ""
+      let referrerCode = command.arguments[3] as? String ?? ""
+  
+      self.initializeMerchant(
+        accessToken: accessToken,
+        refreshUrl: refreshUrl,
+        environment: environment,
+        referrerCode: referrerCode,
+        onSuccess: self.getCordovaSuccessCallback(command),
+        onError: self.getCordovaErrorCallback(command)
+      )
     }
-    
-    return self.getJSON([
-      "debugId": error.debugId ?? "",
-      "code": error.code ?? "",
-      "message": error.message ?? "",
-      "developerMessage": error.developerMessage ?? ""
-      ])
-  }
-    
-    func logError(error: PPRetailError, context: String) {
-        self.log(context)
-        self.log(self.getJSONForError(error))
+  
+    @objc(connectToReaderCDV:) func connectToReaderCDV(_ command: CDVInvokedUrlCommand) {
+      self.connectToReader(
+        onSuccess: self.getCordovaSuccessCallback(command),
+        onError: self.getCordovaErrorCallback(command)
+      )
     }
-
-	func getCordovaSuccessCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
-		return { (msg: String) in
-			self.commandDelegate!.send(
-				CDVPluginResult(status: CDVCommandStatus_OK, messageAs: msg),
-				callbackId: command.callbackId
-			)
-		}
-	}
-
-	func getCordovaErrorCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
-		return { (msg: String) in
-			self.commandDelegate!.send(
-				CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: msg),
-				callbackId: command.callbackId
-			)
-		}
-	}
-
-	// ----------------------------------------------------------------------------------------------
-
-	var merchantInitialized : Bool = false
-	var readerConnected: Bool = false
-
+  
+    @objc(searchAndConnectToReaderCDV:) func searchAndConnectToReaderCDV(_ command: CDVInvokedUrlCommand) {
+      self.searchAndConnectToReader(
+        onSuccess: self.getCordovaSuccessCallback(command),
+        onError: self.getCordovaErrorCallback(command)
+      )
+    }
+  
+    @objc(takePaymentCDV:) func takePaymentCDV(_ command: CDVInvokedUrlCommand) {
+      let currencyCode = command.arguments[0] as? String ?? "USD"
+      let total = NSDecimalNumber(decimal: ((command.arguments[1] as? NSNumber ?? 0)?.decimalValue)!)
+  
+      self.takePayment(
+        currencyCode: currencyCode,
+        total: total,
+        onSuccess: self.getCordovaSuccessCallback(command),
+        onError: self.getCordovaErrorCallback(command)
+      )
+    }
+  
+  // MARK: - Swift Implementation
+  
   func initializeMerchant(
     accessToken: String,
     refreshUrl: String,
@@ -70,7 +58,7 @@ import PayPalRetailSDK
     onSuccess: @escaping (String) -> Void,
     onError: @escaping (String) -> Void
     )  {
-
+    
     let hasEmptyValues: Bool = accessToken.isEmpty || refreshUrl.isEmpty || environment.isEmpty
     
     if hasEmptyValues {
@@ -78,13 +66,13 @@ import PayPalRetailSDK
       // if any of the values are empty
       return onError("accessToken, refreshUrl, & environment arguments must not be empty")
     }
-
+    
     self.log("INITIALIZE SDK START")
     PayPalRetailSDK.initializeSDK()
     self.log("INITIALIZE SDK SUCCESS")
     
     self.log("INITIALIZE MERCHANT START")
-    let sdkCreds = SdkCredential.init(
+    let sdkCreds = SdkCredential(
       accessToken: accessToken,
       refreshUrl: refreshUrl,
       environment: environment
@@ -106,8 +94,8 @@ import PayPalRetailSDK
       onSuccess("Initialized")
     }
   }
-
-	func checkForReaderUpdate(reader: PPRetailPaymentDevice?) {
+  
+  func checkForReaderUpdate(reader: PPRetailPaymentDevice?) {
     guard let pendingUpdate = reader?.pendingUpdate, pendingUpdate.isRequired == true else {
       self.log("Reader update not required at this time.")
       return
@@ -122,33 +110,7 @@ import PayPalRetailSDK
       self?.log("Reader update complete.")
     })
   }
-
-  private func getConnectToReaderHandler(
-    onSuccess: @escaping (String) -> Void,
-    onError: @escaping (String) -> Void
-    ) -> Optional<(Optional<PPRetailError>, Optional<PPRetailPaymentDevice>) -> ()> {
-    return { (error, paymentDevice) in
-      if let err = error {
-        self.logError(error: err, context: "CONNECT TO READER FAILED")
-        onError(err.message!)
-        return
-      }
-      
-      guard paymentDevice?.isConnected() == true else {
-        self.log("CONNECT TO READER FAILED - PAYMENT DEVICE NOT CONNECTED")
-        onError("A payment device is not connected.")
-        return
-      }
-      
-      let paymentDeviceId = paymentDevice?.id
-      self.log("CONNECT TO READER SUCCESS")
-      self.log("PAYMENT DEVICE ID: " + paymentDeviceId!)
-      self.readerConnected = true
-      self.checkForReaderUpdate(reader: paymentDevice)
-      onSuccess("Payment device with ID " + paymentDeviceId! + " found.")
-    }
-  }
-
+  
   func connectToReader(
     onSuccess: @escaping (String) -> Void,
     onError: @escaping (String) -> Void) {
@@ -180,7 +142,7 @@ import PayPalRetailSDK
     
     deviceManager?.searchAndConnect(self.getConnectToReaderHandler(onSuccess: onSuccess, onError: onError))
   }
-
+  
   func takePayment(
     currencyCode: String,
     total: NSDecimalNumber,
@@ -199,7 +161,11 @@ import PayPalRetailSDK
       return
     }
     
-    let unitPrice = NSDecimalNumber(value: max(total.doubleValue, 1))
+    let unitPrice = NSDecimalNumber(value: max(total.doubleValue, 0))
+    
+    if unitPrice.decimalValue < 1.00 {
+      return onError("Total price must be greater than 1.00")
+    }
     
     let invoice: PPRetailInvoice?
     invoice = PPRetailInvoice.init(currencyCode: currencyCode)
@@ -225,7 +191,29 @@ import PayPalRetailSDK
       context?.beginPayment(paymentOptions)
     })
   }
-
+  
+  // MARK: - Cordova Callbacks
+  
+    private func getCordovaSuccessCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
+      return { (msg: String) in
+        self.commandDelegate!.send(
+          CDVPluginResult(status: CDVCommandStatus_OK, messageAs: msg),
+          callbackId: command.callbackId
+        )
+      }
+    }
+  
+    private func getCordovaErrorCallback(_ command: CDVInvokedUrlCommand) -> (String) -> Void {
+      return { (msg: String) in
+        self.commandDelegate!.send(
+          CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: msg),
+          callbackId: command.callbackId
+        )
+      }
+    }
+  
+  // MARK: - Handlers
+  
   private func getCreateTransactionCompleteHandler(
     onSuccess: @escaping (String) -> Void,
     onError: @escaping (String) -> Void) -> Optional<(Optional<PPRetailError>, Optional<PPRetailTransactionRecord>) -> ()> {
@@ -266,47 +254,69 @@ import PayPalRetailSDK
     }
   }
   
-	// ----------------------------------------------------------------------------------------------
-
-	func initializeMerchantCDV(_ command: CDVInvokedUrlCommand) {
-		let accessToken = command.arguments[0] as? String ?? ""
-		let refreshUrl = command.arguments[1] as? String ?? ""
-		let environment = command.arguments[2] as? String ?? ""
-		let referrerCode = command.arguments[3] as? String ?? ""
-
-		self.initializeMerchant(
-			accessToken: accessToken,
-			refreshUrl: refreshUrl,
-			environment: environment,
-			referrerCode: referrerCode,
-			onSuccess: self.getCordovaSuccessCallback(command),
-			onError: self.getCordovaErrorCallback(command)
-		)
-	}
-
-	func connectToReaderCDV(_ command: CDVInvokedUrlCommand) {
-		self.connectToReader(
-			onSuccess: self.getCordovaSuccessCallback(command),
-			onError: self.getCordovaErrorCallback(command)
-		)
-	}
-
-	func searchAndConnectToReaderCDV(_ command: CDVInvokedUrlCommand) {
-		self.searchAndConnectToReader(
-			onSuccess: self.getCordovaSuccessCallback(command),
-			onError: self.getCordovaErrorCallback(command)
-		)
-	}
-
-	func takePaymentCDV(_ command: CDVInvokedUrlCommand) {
-		let currencyCode = command.arguments[0] as? String ?? ""
-		let total = NSDecimalNumber(decimal: ((command.arguments[1] as? NSNumber ?? 1)?.decimalValue)!)
-		
-		self.takePayment(
-			currencyCode: "USD",
-			total: total,
-			onSuccess: self.getCordovaSuccessCallback(command),
-			onError: self.getCordovaErrorCallback(command)
-		)
-	}
+  private func getConnectToReaderHandler(
+    onSuccess: @escaping (String) -> Void,
+    onError: @escaping (String) -> Void
+    ) -> Optional<(Optional<PPRetailError>, Optional<PPRetailPaymentDevice>) -> ()> {
+    return { (error, paymentDevice) in
+      if let err = error {
+        self.logError(error: err, context: "CONNECT TO READER FAILED")
+        onError(err.message!)
+        return
+      }
+      
+      guard paymentDevice?.isConnected() == true else {
+        self.log("CONNECT TO READER FAILED - PAYMENT DEVICE NOT CONNECTED")
+        onError("A payment device is not connected.")
+        return
+      }
+      
+      let paymentDeviceId = paymentDevice?.id
+      self.log("CONNECT TO READER SUCCESS")
+      self.log("PAYMENT DEVICE ID: " + paymentDeviceId!)
+      self.readerConnected = true
+      self.checkForReaderUpdate(reader: paymentDevice)
+      onSuccess("Payment device with ID " + paymentDeviceId! + " found.")
+    }
+  }
+  
+  // MARK: - Private
+  
+  private func log(_ msg: String) {
+    print("[CDVPayPalHere] " + msg)
+  }
+  
+  private func logError(error: PPRetailError, context: String) {
+    self.log(context)
+    self.log(self.getJSONForError(error))
+  }
+  
+  private func getJSON (_ d: Dictionary<String, String>) -> String {
+    var str = "{"
+    for (k, v) in d {
+      if (v.hasPrefix("{") || v.hasPrefix("[")) {
+        str += "\"\(k)\":\(v),"
+      } else {
+        str += "\"\(k)\":\"\(v)\","
+      }
+    }
+    
+    str = String(str[..<str.index(before: str.endIndex)])
+    
+    str += "}"
+    return str
+  }
+  
+  private func getJSONForError (_ error: PPRetailError?) -> String {
+    guard let error = error else {
+      return self.getJSON([:])
+    }
+    
+    return self.getJSON([
+      "debugId": error.debugId ?? "",
+      "code": error.code ?? "",
+      "message": error.message ?? "",
+      "developerMessage": error.developerMessage ?? ""
+      ])
+  }
 }
